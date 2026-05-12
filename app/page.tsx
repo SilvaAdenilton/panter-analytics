@@ -96,6 +96,7 @@ export default function Home() {
         const dia = String(dataExcel.d).padStart(2, '0');
         const mes = String(dataExcel.m).padStart(2, '0');
         const ano = dataExcel.y;
+
         return `${dia}/${mes}/${ano}`;
       }
     }
@@ -107,33 +108,54 @@ export default function Home() {
     return String(valor);
   }
 
+  function classificarResultado(resultado: string) {
+    const r = limparTexto(resultado);
+
+    if (r.includes('green') || r.includes('ganha') || r.includes('win')) return 'green';
+    if (r.includes('red') || r.includes('perd') || r.includes('loss')) return 'red';
+    if (r.includes('cashout')) return 'cashout';
+    if (r.includes('void') || r.includes('anulada') || r.includes('devolvida')) return 'void';
+
+    return 'outros';
+  }
+
   function calcularLucro(stake: number, odd: number, resultado: string, lucroPlanilha: number) {
     if (lucroPlanilha !== 0) return lucroPlanilha;
 
-    const r = limparTexto(resultado);
+    const r = classificarResultado(resultado);
 
-    if (r.includes('green') || r.includes('ganha') || r.includes('win')) {
-      return stake * odd - stake;
-    }
-
-    if (r.includes('red') || r.includes('perd') || r.includes('loss')) {
-      return -stake;
-    }
-
-    if (
-      r.includes('cashout') ||
-      r.includes('anulada') ||
-      r.includes('void') ||
-      r.includes('devolvida')
-    ) {
-      return 0;
-    }
+    if (r === 'green') return stake * odd - stake;
+    if (r === 'red') return -stake;
 
     return 0;
   }
 
+  function normalizarMercado(mercado: string) {
+    const m = limparTexto(mercado);
+
+    if (m.includes('escanteio') || m.includes('corner')) return 'Escanteios';
+    if (m.includes('ambas') || m.includes('btts')) return 'Ambas Marcam';
+    if (m.includes('under') || m.includes('menos')) return 'Under Gols';
+    if (m.includes('over') || m.includes('mais')) return 'Over Gols';
+    if (m.includes('dnb') || m.includes('empate anula')) return 'DNB';
+    if (m.includes('handicap') || m.includes('hc')) return 'Handicap';
+    if (m.includes('cartao') || m.includes('cartão')) return 'Cartões';
+
+    return mercado || 'Não informado';
+  }
+
+  function faixaOdd(odd: number) {
+    if (odd <= 0) return 'Sem odd';
+    if (odd < 1.4) return '1.01 - 1.39';
+    if (odd < 1.6) return '1.40 - 1.59';
+    if (odd < 1.8) return '1.60 - 1.79';
+    if (odd < 2) return '1.80 - 1.99';
+    return '2.00+';
+  }
+
   function importarExcel(event: React.ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
+
     if (!file) return;
 
     const reader = new FileReader();
@@ -256,26 +278,61 @@ export default function Home() {
     const totalStake = entradas.reduce((acc, e) => acc + e.stake, 0);
     const lucroTotal = entradas.reduce((acc, e) => acc + e.lucro, 0);
 
-    const greens = entradas.filter((e) =>
-      limparTexto(e.resultado).includes('green')
-    ).length;
+    const greens = entradas.filter((e) => classificarResultado(e.resultado) === 'green').length;
+    const reds = entradas.filter((e) => classificarResultado(e.resultado) === 'red').length;
 
-    const reds = entradas.filter((e) =>
-      limparTexto(e.resultado).includes('red')
-    ).length;
-
-    const bancaAtual = bancaInicial + lucroTotal;
     const roi = totalStake > 0 ? (lucroTotal / totalStake) * 100 : 0;
     const taxaGreen = entradas.length > 0 ? (greens / entradas.length) * 100 : 0;
 
+    let banca = bancaInicial;
+    let pico = bancaInicial;
+    let maiorDrawdown = 0;
+
+    entradas.forEach((e) => {
+      banca += e.lucro;
+
+      if (banca > pico) pico = banca;
+
+      const drawdown = pico - banca;
+
+      if (drawdown > maiorDrawdown) maiorDrawdown = drawdown;
+    });
+
+    let maiorSequenciaRed = 0;
+    let maiorSequenciaGreen = 0;
+    let atualRed = 0;
+    let atualGreen = 0;
+
+    entradas.forEach((e) => {
+      const r = classificarResultado(e.resultado);
+
+      if (r === 'red') {
+        atualRed++;
+        atualGreen = 0;
+      } else if (r === 'green') {
+        atualGreen++;
+        atualRed = 0;
+      } else {
+        atualRed = 0;
+        atualGreen = 0;
+      }
+
+      maiorSequenciaRed = Math.max(maiorSequenciaRed, atualRed);
+      maiorSequenciaGreen = Math.max(maiorSequenciaGreen, atualGreen);
+    });
+
     return {
+      bancaAtual: bancaInicial + lucroTotal,
       totalStake,
       lucroTotal,
       greens,
       reds,
-      bancaAtual,
       roi,
       taxaGreen,
+      maiorDrawdown,
+      maiorSequenciaRed,
+      maiorSequenciaGreen,
+      stakeMedia: entradas.length ? totalStake / entradas.length : 0,
     };
   }, [entradas, bancaInicial]);
 
@@ -293,6 +350,45 @@ export default function Home() {
     });
   }, [entradas, bancaInicial]);
 
+  function agruparPor(chave: 'mercado' | 'odd') {
+    const mapa: Record<string, any> = {};
+
+    entradas.forEach((e) => {
+      const key = chave === 'mercado' ? normalizarMercado(e.mercado) : faixaOdd(e.odd);
+
+      if (!mapa[key]) {
+        mapa[key] = {
+          nome: key,
+          entradas: 0,
+          stake: 0,
+          lucro: 0,
+          greens: 0,
+          reds: 0,
+          roi: 0,
+          taxaGreen: 0,
+        };
+      }
+
+      mapa[key].entradas++;
+      mapa[key].stake += e.stake;
+      mapa[key].lucro += e.lucro;
+
+      if (classificarResultado(e.resultado) === 'green') mapa[key].greens++;
+      if (classificarResultado(e.resultado) === 'red') mapa[key].reds++;
+    });
+
+    return Object.values(mapa)
+      .map((item: any) => ({
+        ...item,
+        roi: item.stake > 0 ? (item.lucro / item.stake) * 100 : 0,
+        taxaGreen: item.entradas > 0 ? (item.greens / item.entradas) * 100 : 0,
+      }))
+      .sort((a: any, b: any) => b.lucro - a.lucro);
+  }
+
+  const porMercado = useMemo(() => agruparPor('mercado'), [entradas]);
+  const porOdd = useMemo(() => agruparPor('odd'), [entradas]);
+
   const pizzaResultados = [
     { name: 'Green', value: resumo.greens },
     { name: 'Red', value: resumo.reds },
@@ -302,12 +398,31 @@ export default function Home() {
     },
   ];
 
+  const leituraPanter = useMemo(() => {
+    const melhorMercado = porMercado[0];
+    const melhorOdd = porOdd[0];
+
+    if (!entradas.length) {
+      return 'Importe sua planilha para gerar a leitura Panter.';
+    }
+
+    if (resumo.roi > 0) {
+      return `Panter positivo: ROI em ${resumo.roi.toFixed(2)}%. Melhor mercado até agora: ${
+        melhorMercado?.nome || '-'
+      }. Melhor faixa de odd: ${melhorOdd?.nome || '-'}.`;
+    }
+
+    return `Panter em atenção: ROI em ${resumo.roi.toFixed(
+      2
+    )}%. Revise os mercados negativos, controle stake e evite repetir entradas correlacionadas.`;
+  }, [entradas, resumo.roi, porMercado, porOdd]);
+
   return (
     <main style={pageStyle}>
-      <h1 style={titulo}>Dashboard Panter</h1>
+      <h1 style={titulo}>Dashboard Panter Pro</h1>
 
       <p style={subtitulo}>
-        Controle operacional de banca esportiva com Excel, gráficos e leitura automática de colunas.
+        Análise de banca, mercados, odds, drawdown e consistência operacional.
       </p>
 
       <section style={card}>
@@ -344,7 +459,16 @@ export default function Home() {
         <ResumoCard titulo="Stake Total" valor={moeda(resumo.totalStake)} />
         <ResumoCard titulo="ROI" valor={`${resumo.roi.toFixed(2)}%`} />
         <ResumoCard titulo="Taxa Green" valor={`${resumo.taxaGreen.toFixed(2)}%`} />
+        <ResumoCard titulo="Drawdown Máx." valor={moeda(resumo.maiorDrawdown)} />
+        <ResumoCard titulo="Maior Seq. Green" valor={String(resumo.maiorSequenciaGreen)} />
+        <ResumoCard titulo="Maior Seq. Red" valor={String(resumo.maiorSequenciaRed)} />
+        <ResumoCard titulo="Stake Média" valor={moeda(resumo.stakeMedia)} />
         <ResumoCard titulo="Entradas" valor={String(entradas.length)} />
+      </section>
+
+      <section style={cardDestaque}>
+        <h2>Leitura Panter</h2>
+        <p style={{ fontSize: 18, lineHeight: 1.6 }}>{leituraPanter}</p>
       </section>
 
       <section style={card}>
@@ -376,7 +500,35 @@ export default function Home() {
       </section>
 
       <section style={card}>
-        <h2>Distribuição</h2>
+        <h2>Lucro por Mercado</h2>
+
+        <ResponsiveContainer width="100%" height={350}>
+          <BarChart data={porMercado}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="nome" />
+            <YAxis />
+            <Tooltip />
+            <Bar dataKey="lucro" fill="#22c55e" />
+          </BarChart>
+        </ResponsiveContainer>
+      </section>
+
+      <section style={card}>
+        <h2>Lucro por Faixa de Odd</h2>
+
+        <ResponsiveContainer width="100%" height={350}>
+          <BarChart data={porOdd}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="nome" />
+            <YAxis />
+            <Tooltip />
+            <Bar dataKey="lucro" fill="#f59e0b" />
+          </BarChart>
+        </ResponsiveContainer>
+      </section>
+
+      <section style={card}>
+        <h2>Distribuição de Resultados</h2>
 
         <ResponsiveContainer width="100%" height={320}>
           <PieChart>
@@ -389,6 +541,9 @@ export default function Home() {
           </PieChart>
         </ResponsiveContainer>
       </section>
+
+      <TabelaAnalitica titulo="Ranking por Mercado" dados={porMercado} moeda={moeda} />
+      <TabelaAnalitica titulo="Ranking por Faixa de Odd" dados={porOdd} moeda={moeda} />
 
       <section style={card}>
         <h2>Tabela Operacional</h2>
@@ -448,6 +603,70 @@ function ResumoCard({ titulo, valor }: { titulo: string; valor: string }) {
   );
 }
 
+function TabelaAnalitica({
+  titulo,
+  dados,
+  moeda,
+}: {
+  titulo: string;
+  dados: any[];
+  moeda: (v: number) => string;
+}) {
+  return (
+    <section style={card}>
+      <h2>{titulo}</h2>
+
+      <div style={{ overflowX: 'auto' }}>
+        <table style={table}>
+          <thead>
+            <tr>
+              <th style={th}>Grupo</th>
+              <th style={th}>Entradas</th>
+              <th style={th}>Greens</th>
+              <th style={th}>Reds</th>
+              <th style={th}>Stake</th>
+              <th style={th}>Lucro</th>
+              <th style={th}>ROI</th>
+              <th style={th}>Taxa Green</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {dados.map((item) => (
+              <tr key={item.nome}>
+                <td style={td}>{item.nome}</td>
+                <td style={td}>{item.entradas}</td>
+                <td style={td}>{item.greens}</td>
+                <td style={td}>{item.reds}</td>
+                <td style={td}>{moeda(item.stake)}</td>
+                <td
+                  style={{
+                    ...td,
+                    color: item.lucro >= 0 ? '#22c55e' : '#ef4444',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {moeda(item.lucro)}
+                </td>
+                <td
+                  style={{
+                    ...td,
+                    color: item.roi >= 0 ? '#22c55e' : '#ef4444',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  {item.roi.toFixed(2)}%
+                </td>
+                <td style={td}>{item.taxaGreen.toFixed(2)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
 const pageStyle = {
   background: '#111827',
   color: 'white',
@@ -471,6 +690,14 @@ const card = {
   padding: 20,
   borderRadius: 16,
   marginBottom: 20,
+};
+
+const cardDestaque = {
+  background: '#064e3b',
+  padding: 22,
+  borderRadius: 16,
+  marginBottom: 20,
+  border: '1px solid #22c55e',
 };
 
 const grid = {
