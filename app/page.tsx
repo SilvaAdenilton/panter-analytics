@@ -2,7 +2,6 @@
 
 import { useMemo, useState } from 'react';
 import * as XLSX from 'xlsx';
-
 import {
   ResponsiveContainer,
   LineChart,
@@ -31,7 +30,6 @@ type Entrada = {
 
 export default function Home() {
   const [bancaInicial, setBancaInicial] = useState(1000);
-
   const [entradas, setEntradas] = useState<Entrada[]>([]);
 
   function moeda(valor: number) {
@@ -41,139 +39,227 @@ export default function Home() {
     });
   }
 
-  function converterNumero(valor: any) {
-    const numero = Number(
-      String(valor ?? '')
-        .replace('R$', '')
-        .replace(',', '.')
-    );
+  function limparTexto(valor: any) {
+    return String(valor ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .trim()
+      .toLowerCase();
+  }
 
+  function pegarCampo(row: any, nomes: string[]) {
+    const chaves = Object.keys(row);
+
+    for (const nome of nomes) {
+      const encontrado = chaves.find(
+        (chave) => limparTexto(chave) === limparTexto(nome)
+      );
+
+      if (encontrado) return row[encontrado];
+    }
+
+    return '';
+  }
+
+  function converterNumero(valor: any) {
+    if (valor === null || valor === undefined || valor === '') return 0;
+    if (typeof valor === 'number') return valor;
+
+    let texto = String(valor)
+      .replace('R$', '')
+      .replace('%', '')
+      .replace(/\s/g, '')
+      .trim();
+
+    if (texto.includes(',') && texto.includes('.')) {
+      texto = texto.replace(/\./g, '').replace(',', '.');
+    } else {
+      texto = texto.replace(',', '.');
+    }
+
+    const numero = Number(texto);
     return Number.isFinite(numero) ? numero : 0;
   }
 
-  function importarExcel(
-    event: React.ChangeEvent<HTMLInputElement>
-  ) {
-    const file = event.target.files?.[0];
+  function converterData(valor: any) {
+    if (!valor) return '';
 
+    if (typeof valor === 'number') {
+      const dataExcel = XLSX.SSF.parse_date_code(valor);
+
+      if (dataExcel) {
+        const dia = String(dataExcel.d).padStart(2, '0');
+        const mes = String(dataExcel.m).padStart(2, '0');
+        const ano = dataExcel.y;
+
+        return `${dia}/${mes}/${ano}`;
+      }
+    }
+
+    if (valor instanceof Date) {
+      return valor.toLocaleDateString('pt-BR');
+    }
+
+    return String(valor);
+  }
+
+  function calcularLucro(
+    stake: number,
+    odd: number,
+    resultado: string,
+    lucroPlanilha: number
+  ) {
+    if (lucroPlanilha !== 0) return lucroPlanilha;
+
+    const r = limparTexto(resultado);
+
+    if (r.includes('green') || r.includes('ganha') || r.includes('win')) {
+      return stake * odd - stake;
+    }
+
+    if (r.includes('red') || r.includes('perd') || r.includes('loss')) {
+      return -stake;
+    }
+
+    if (
+      r.includes('cashout') ||
+      r.includes('anulada') ||
+      r.includes('void') ||
+      r.includes('devolvida')
+    ) {
+      return 0;
+    }
+
+    return 0;
+  }
+
+  function importarExcel(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
 
     reader.onload = (e) => {
-      const data = new Uint8Array(
-        e.target?.result as ArrayBuffer
-      );
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
 
       const workbook = XLSX.read(data, {
         type: 'array',
+        cellDates: true,
       });
 
-      const sheet =
-        workbook.Sheets[workbook.SheetNames[0]];
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
 
-      const rows: any[] =
-        XLSX.utils.sheet_to_json(sheet);
+      const rows: any[] = XLSX.utils.sheet_to_json(sheet, {
+        defval: '',
+      });
 
-      const entradasImportadas: Entrada[] =
-        rows.map((row, index) => {
-          const stake = converterNumero(
-            row.Stake || row.stake
-          );
+      const dados: Entrada[] = rows.map((row, index) => {
+        const dataOriginal = pegarCampo(row, [
+          'Data',
+          'Dia',
+          'Date',
+          'Data da aposta',
+          'Data Aposta',
+          'Dt',
+        ]);
 
-          const odd = converterNumero(
-            row.Odd || row.odd
-          );
+        const jogo = pegarCampo(row, [
+          'Jogo',
+          'Partida',
+          'Evento',
+          'Confronto',
+          'Match',
+        ]);
 
-          const resultado = String(
-            row.Resultado ||
-              row.resultado ||
-              ''
-          ).toLowerCase();
+        const mercado = pegarCampo(row, [
+          'Mercado',
+          'Market',
+          'Aposta',
+          'Tipo',
+          'Seleção',
+          'Selecao',
+        ]);
 
-          let lucro = 0;
+        const oddOriginal = pegarCampo(row, [
+          'Odd',
+          'Odds',
+          'Cotação',
+          'Cotacao',
+          'Preço',
+          'Preco',
+        ]);
 
-          if (resultado.includes('green')) {
-            lucro = stake * odd - stake;
-          }
+        const stakeOriginal = pegarCampo(row, [
+          'Stake',
+          'Valor',
+          'Entrada',
+          'Investimento',
+          'Apostado',
+          'Valor apostado',
+        ]);
 
-          if (resultado.includes('red')) {
-            lucro = -stake;
-          }
+        const resultadoOriginal = pegarCampo(row, [
+          'Resultado',
+          'Status',
+          'Situação',
+          'Situacao',
+          'Resultado aposta',
+        ]);
 
-          if (
-            resultado.includes('cashout') ||
-            resultado.includes('void') ||
-            resultado.includes('anulada')
-          ) {
-            lucro = 0;
-          }
+        const lucroOriginal = pegarCampo(row, [
+          'Lucro',
+          'Retorno',
+          'Profit',
+          'P/L',
+          'PL',
+          'Resultado financeiro',
+        ]);
 
-          return {
-            id: Date.now() + index,
-            data: String(
-              row.Data || row.data || ''
-            ),
-            jogo: String(
-              row.Jogo || row.jogo || ''
-            ),
-            mercado: String(
-              row.Mercado || row.mercado || ''
-            ),
-            odd,
-            stake,
-            resultado,
-            lucro,
-          };
-        });
+        const odd = converterNumero(oddOriginal);
+        const stake = converterNumero(stakeOriginal);
+        const resultado = String(resultadoOriginal || '').toLowerCase();
+        const lucroPlanilha = converterNumero(lucroOriginal);
 
-      setEntradas(entradasImportadas);
+        return {
+          id: Date.now() + index,
+          data: converterData(dataOriginal),
+          jogo: String(jogo || ''),
+          mercado: String(mercado || ''),
+          odd,
+          stake,
+          resultado: resultado || 'não informado',
+          lucro: calcularLucro(stake, odd, resultado, lucroPlanilha),
+        };
+      });
+
+      setEntradas(dados);
     };
 
     reader.readAsArrayBuffer(file);
   }
 
   const resumo = useMemo(() => {
-    const totalStake = entradas.reduce(
-      (acc, item) => acc + item.stake,
-      0
-    );
-
-    const lucroTotal = entradas.reduce(
-      (acc, item) => acc + item.lucro,
-      0
-    );
+    const totalStake = entradas.reduce((acc, e) => acc + e.stake, 0);
+    const lucroTotal = entradas.reduce((acc, e) => acc + e.lucro, 0);
 
     const greens = entradas.filter((e) =>
-      e.resultado.includes('green')
+      limparTexto(e.resultado).includes('green')
     ).length;
 
     const reds = entradas.filter((e) =>
-      e.resultado.includes('red')
+      limparTexto(e.resultado).includes('red')
     ).length;
 
-    const abertas = entradas.filter((e) =>
-      e.resultado.includes('aberta')
-    ).length;
-
-    const roi =
-      totalStake > 0
-        ? (lucroTotal / totalStake) * 100
-        : 0;
-
-    const taxaGreen =
-      entradas.length > 0
-        ? (greens / entradas.length) * 100
-        : 0;
+    const bancaAtual = bancaInicial + lucroTotal;
+    const roi = totalStake > 0 ? (lucroTotal / totalStake) * 100 : 0;
+    const taxaGreen = entradas.length > 0 ? (greens / entradas.length) * 100 : 0;
 
     return {
-      bancaAtual:
-        bancaInicial + lucroTotal,
       totalStake,
       lucroTotal,
       greens,
       reds,
-      abertas,
+      bancaAtual,
       roi,
       taxaGreen,
     };
@@ -194,37 +280,28 @@ export default function Home() {
   }, [entradas, bancaInicial]);
 
   const pizzaResultados = [
+    { name: 'Green', value: resumo.greens },
+    { name: 'Red', value: resumo.reds },
     {
-      name: 'Green',
-      value: resumo.greens,
-    },
-    {
-      name: 'Red',
-      value: resumo.reds,
-    },
-    {
-      name: 'Abertas',
-      value: resumo.abertas,
+      name: 'Outros',
+      value: Math.max(entradas.length - resumo.greens - resumo.reds, 0),
     },
   ];
 
   return (
     <main style={pageStyle}>
-      <h1 style={titulo}>
-        Dashboard Panter
-      </h1>
+      <h1 style={titulo}>Dashboard Panter</h1>
 
       <p style={subtitulo}>
-        Controle operacional de banca esportiva com Excel e gráficos.
+        Controle operacional de banca esportiva com Excel, gráficos e leitura automática de colunas.
       </p>
 
       <section style={card}>
         <h2>Importar Excel</h2>
 
         <p style={textoSecundario}>
-          Estrutura esperada:
-          <br />
-          Data | Jogo | Mercado | Odd | Stake | Resultado
+          O sistema tenta reconhecer colunas como Data, Jogo, Mercado, Odd, Stake, Resultado,
+          Lucro, Valor, Entrada, Evento e Status.
         </p>
 
         <input
@@ -241,77 +318,30 @@ export default function Home() {
         <input
           type="number"
           value={bancaInicial}
-          onChange={(e) =>
-            setBancaInicial(
-              Number(e.target.value)
-            )
-          }
+          onChange={(e) => setBancaInicial(Number(e.target.value))}
           style={input}
         />
       </section>
 
       <section style={grid}>
-        <ResumoCard
-          titulo="Banca Atual"
-          valor={moeda(
-            resumo.bancaAtual
-          )}
-        />
-
-        <ResumoCard
-          titulo="Lucro Total"
-          valor={moeda(
-            resumo.lucroTotal
-          )}
-        />
-
-        <ResumoCard
-          titulo="Stake Total"
-          valor={moeda(
-            resumo.totalStake
-          )}
-        />
-
-        <ResumoCard
-          titulo="ROI"
-          valor={`${resumo.roi.toFixed(
-            2
-          )}%`}
-        />
-
-        <ResumoCard
-          titulo="Taxa Green"
-          valor={`${resumo.taxaGreen.toFixed(
-            2
-          )}%`}
-        />
-
-        <ResumoCard
-          titulo="Entradas"
-          valor={String(
-            entradas.length
-          )}
-        />
+        <ResumoCard titulo="Banca Atual" valor={moeda(resumo.bancaAtual)} />
+        <ResumoCard titulo="Lucro Total" valor={moeda(resumo.lucroTotal)} />
+        <ResumoCard titulo="Stake Total" valor={moeda(resumo.totalStake)} />
+        <ResumoCard titulo="ROI" valor={`${resumo.roi.toFixed(2)}%`} />
+        <ResumoCard titulo="Taxa Green" valor={`${resumo.taxaGreen.toFixed(2)}%`} />
+        <ResumoCard titulo="Entradas" valor={String(entradas.length)} />
       </section>
 
       <section style={card}>
         <h2>Evolução da Banca</h2>
 
-        <ResponsiveContainer
-          width="100%"
-          height={350}
-        >
+        <ResponsiveContainer width="100%" height={350}>
           <LineChart data={graficoBanca}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="entrada" />
             <YAxis />
             <Tooltip />
-            <Line
-              type="monotone"
-              dataKey="banca"
-              stroke="#22c55e"
-              strokeWidth={3}
-            />
+            <Line type="monotone" dataKey="banca" stroke="#22c55e" strokeWidth={3} />
           </LineChart>
         </ResponsiveContainer>
       </section>
@@ -319,19 +349,13 @@ export default function Home() {
       <section style={card}>
         <h2>Lucro por Entrada</h2>
 
-        <ResponsiveContainer
-          width="100%"
-          height={350}
-        >
+        <ResponsiveContainer width="100%" height={350}>
           <BarChart data={graficoBanca}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="entrada" />
             <YAxis />
             <Tooltip />
-            <Bar
-              dataKey="lucro"
-              fill="#3b82f6"
-            />
+            <Bar dataKey="lucro" fill="#3b82f6" />
           </BarChart>
         </ResponsiveContainer>
       </section>
@@ -339,23 +363,13 @@ export default function Home() {
       <section style={card}>
         <h2>Distribuição</h2>
 
-        <ResponsiveContainer
-          width="100%"
-          height={320}
-        >
+        <ResponsiveContainer width="100%" height={320}>
           <PieChart>
-            <Pie
-              data={pizzaResultados}
-              dataKey="value"
-              nameKey="name"
-              outerRadius={100}
-              label
-            >
+            <Pie data={pizzaResultados} dataKey="value" nameKey="name" outerRadius={100} label>
               <Cell fill="#22c55e" />
               <Cell fill="#ef4444" />
               <Cell fill="#facc15" />
             </Pie>
-
             <Tooltip />
           </PieChart>
         </ResponsiveContainer>
@@ -364,11 +378,7 @@ export default function Home() {
       <section style={card}>
         <h2>Tabela Operacional</h2>
 
-        <div
-          style={{
-            overflowX: 'auto',
-          }}
-        >
+        <div style={{ overflowX: 'auto' }}>
           <table style={table}>
             <thead>
               <tr>
@@ -385,39 +395,17 @@ export default function Home() {
             <tbody>
               {entradas.map((e) => (
                 <tr key={e.id}>
-                  <td style={td}>
-                    {e.data}
-                  </td>
-
-                  <td style={td}>
-                    {e.jogo}
-                  </td>
-
-                  <td style={td}>
-                    {e.mercado}
-                  </td>
-
-                  <td style={td}>
-                    {e.odd}
-                  </td>
-
-                  <td style={td}>
-                    {moeda(e.stake)}
-                  </td>
-
-                  <td style={td}>
-                    {e.resultado}
-                  </td>
-
+                  <td style={td}>{e.data}</td>
+                  <td style={td}>{e.jogo}</td>
+                  <td style={td}>{e.mercado}</td>
+                  <td style={td}>{e.odd}</td>
+                  <td style={td}>{moeda(e.stake)}</td>
+                  <td style={td}>{e.resultado}</td>
                   <td
                     style={{
                       ...td,
-                      color:
-                        e.lucro >= 0
-                          ? '#22c55e'
-                          : '#ef4444',
-                      fontWeight:
-                        'bold',
+                      color: e.lucro >= 0 ? '#22c55e' : '#ef4444',
+                      fontWeight: 'bold',
                     }}
                   >
                     {moeda(e.lucro)}
@@ -429,35 +417,18 @@ export default function Home() {
         </div>
 
         {entradas.length === 0 && (
-          <p style={textoSecundario}>
-            Nenhuma planilha importada.
-          </p>
+          <p style={textoSecundario}>Nenhuma planilha importada.</p>
         )}
       </section>
     </main>
   );
 }
 
-function ResumoCard({
-  titulo,
-  valor,
-}: {
-  titulo: string;
-  valor: string;
-}) {
+function ResumoCard({ titulo, valor }: { titulo: string; valor: string }) {
   return (
     <div style={card}>
-      <p style={textoSecundario}>
-        {titulo}
-      </p>
-
-      <strong
-        style={{
-          fontSize: 28,
-        }}
-      >
-        {valor}
-      </strong>
+      <p style={textoSecundario}>{titulo}</p>
+      <strong style={{ fontSize: 28 }}>{valor}</strong>
     </div>
   );
 }
@@ -489,8 +460,7 @@ const card = {
 
 const grid = {
   display: 'grid',
-  gridTemplateColumns:
-    'repeat(auto-fit,minmax(220px,1fr))',
+  gridTemplateColumns: 'repeat(auto-fit,minmax(220px,1fr))',
   gap: 15,
 };
 
@@ -520,6 +490,5 @@ const th = {
 
 const td = {
   padding: 14,
-  borderBottom:
-    '1px solid #374151',
+  borderBottom: '1px solid #374151',
 };
