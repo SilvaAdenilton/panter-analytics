@@ -103,19 +103,35 @@ export default function Home() {
     <main
       style={{
         padding: 30,
-        background: '#f3f4f6',
+        background: '#111827',
+        color: 'white',
         minHeight: '100vh',
         fontFamily: 'Arial',
       }}
     >
-      <h1>Dashboard Panter</h1>
+      <h1
+        style={{
+          marginBottom: 10,
+        }}
+      >
+        Dashboard Panter
+      </h1>
+
+      <p
+        style={{
+          color: '#9ca3af',
+          marginBottom: 30,
+        }}
+      >
+        Gestão operacional de banca esportiva.
+      </p>
 
       <div
         style={{
-          background: 'white',
+          background: '#1f2937',
           padding: 20,
           borderRadius: 12,
-          marginTop: 20,
+          marginBottom: 20,
         }}
       >
         <h2>Banca Inicial</h2>
@@ -126,19 +142,17 @@ export default function Home() {
           onChange={(e) =>
             setBancaInicial(Number(e.target.value))
           }
-          style={{
-            padding: 10,
-            width: 200,
-          }}
+          style={inputStyle}
         />
       </div>
 
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4,1fr)',
+          gridTemplateColumns:
+            'repeat(auto-fit,minmax(220px,1fr))',
           gap: 15,
-          marginTop: 20,
+          marginBottom: 20,
         }}
       >
         <Card
@@ -164,10 +178,10 @@ export default function Home() {
 
       <div
         style={{
-          background: 'white',
+          background: '#1f2937',
           padding: 20,
           borderRadius: 12,
-          marginTop: 20,
+          marginBottom: 20,
         }}
       >
         <h2>Nova Entrada</h2>
@@ -175,8 +189,9 @@ export default function Home() {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'repeat(3,1fr)',
-            gap: 10,
+            gridTemplateColumns:
+              'repeat(auto-fit,minmax(220px,1fr))',
+            gap: 12,
           }}
         >
           <input
@@ -188,6 +203,7 @@ export default function Home() {
                 data: e.target.value,
               })
             }
+            style={inputStyle}
           />
 
           <input
@@ -199,6 +215,7 @@ export default function Home() {
                 jogo: e.target.value,
               })
             }
+            style={inputStyle}
           />
 
           <input
@@ -210,6 +227,7 @@ export default function Home() {
                 mercado: e.target.value,
               })
             }
+            style={inputStyle}
           />
 
           <input
@@ -222,6 +240,7 @@ export default function Home() {
                 odd: e.target.value,
               })
             }
+            style={inputStyle}
           />
 
           <input
@@ -234,6 +253,7 @@ export default function Home() {
                 stake: e.target.value,
               })
             }
+            style={inputStyle}
           />
 
           <select
@@ -244,6 +264,7 @@ export default function Home() {
                 resultado: e.target.value,
               })
             }
+            style={inputStyle}
           >
             <option value="green">Green</option>
             <option value="red">Red</option>
@@ -254,12 +275,13 @@ export default function Home() {
           onClick={adicionarEntrada}
           style={{
             marginTop: 20,
-            padding: 12,
-            border: 'none',
-            background: '#111827',
+            background: '#2563eb',
             color: 'white',
-            borderRadius: 8,
+            border: 'none',
+            padding: '12px 20px',
+            borderRadius: 10,
             cursor: 'pointer',
+            fontWeight: 'bold',
           }}
         >
           Adicionar Entrada
@@ -268,46 +290,96 @@ export default function Home() {
 
       <div
         style={{
-          background: 'white',
+          background: '#1f2937',
           padding: 20,
           borderRadius: 12,
-          marginTop: 20,
         }}
       >
         <h2>Histórico</h2>
 
-        <table
+        <div
           style={{
-            width: '100%',
-            borderCollapse: 'collapse',
+            overflowX: 'auto',
           }}
         >
-          <thead>
-            <tr>
-              <th>Data</th>
-              <th>Jogo</th>
-              <th>Mercado</th>
-              <th>Odd</th>
-              <th>Stake</th>
-              <th>Resultado</th>
-              <th>Lucro</th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {entradas.map((e) => (
-              <tr key={e.id}>
-                <td>{e.data}</td>
-                <td>{e.jogo}</td>
-                <td>{e.mercado}</td>
-                <td>{e.odd}</td>
-                <td>R$ {e.stake}</td>
-                <td>{e.resultado}</td>
-                <td>R$ {e.lucro.toFixed(2)}</td>
+          <table
+            style={{
+              width: '100%',
+              borderCollapse: 'collapse',
+              marginTop: 20,
+            }}
+          >
+            <thead>
+              <tr
+                style={{
+                  background: '#374151',
+                }}
+              >
+                <th style={thStyle}>Data</th>
+                <th style={thStyle}>Jogo</th>
+                <th style={thStyle}>Mercado</th>
+                <th style={thStyle}>Odd</th>
+                <th style={thStyle}>Stake</th>
+                <th style={thStyle}>Resultado</th>
+                <th style={thStyle}>Lucro</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+
+            <tbody>
+              {entradas.map((e) => (
+                <tr
+                  key={e.id}
+                  style={{
+                    borderBottom:
+                      '1px solid #374151',
+                  }}
+                >
+                  <td style={tdStyle}>{e.data}</td>
+
+                  <td style={tdStyle}>{e.jogo}</td>
+
+                  <td style={tdStyle}>
+                    {e.mercado}
+                  </td>
+
+                  <td style={tdStyle}>{e.odd}</td>
+
+                  <td style={tdStyle}>
+                    R$ {e.stake}
+                  </td>
+
+                  <td style={tdStyle}>
+                    {e.resultado}
+                  </td>
+
+                  <td
+                    style={{
+                      ...tdStyle,
+                      color:
+                        e.lucro >= 0
+                          ? '#22c55e'
+                          : '#ef4444',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    R$ {e.lucro.toFixed(2)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+
+        {entradas.length === 0 && (
+          <p
+            style={{
+              marginTop: 20,
+              color: '#9ca3af',
+            }}
+          >
+            Nenhuma entrada cadastrada.
+          </p>
+        )}
       </div>
     </main>
   );
@@ -323,16 +395,23 @@ function Card({
   return (
     <div
       style={{
-        background: 'white',
+        background: '#1f2937',
         padding: 20,
         borderRadius: 12,
       }}
     >
-      <p>{titulo}</p>
+      <p
+        style={{
+          color: '#9ca3af',
+          marginBottom: 10,
+        }}
+      >
+        {titulo}
+      </p>
 
       <strong
         style={{
-          fontSize: 24,
+          fontSize: 28,
         }}
       >
         {valor}
@@ -340,3 +419,21 @@ function Card({
     </div>
   );
 }
+
+const inputStyle = {
+  background: '#374151',
+  border: '1px solid #4b5563',
+  padding: 12,
+  borderRadius: 10,
+  color: 'white',
+  width: '100%',
+};
+
+const thStyle = {
+  padding: 14,
+  textAlign: 'left' as const,
+};
+
+const tdStyle = {
+  padding: 14,
+};
