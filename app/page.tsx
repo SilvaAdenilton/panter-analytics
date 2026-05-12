@@ -31,6 +31,7 @@ type Entrada = {
 export default function Home() {
   const [bancaInicial, setBancaInicial] = useState(1000);
   const [entradas, setEntradas] = useState<Entrada[]>([]);
+  const [colunasDetectadas, setColunasDetectadas] = useState<string[]>([]);
 
   function moeda(valor: number) {
     return valor.toLocaleString('pt-BR', {
@@ -43,6 +44,7 @@ export default function Home() {
     return String(valor ?? '')
       .normalize('NFD')
       .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
   }
@@ -51,9 +53,12 @@ export default function Home() {
     const chaves = Object.keys(row);
 
     for (const nome of nomes) {
-      const encontrado = chaves.find(
-        (chave) => limparTexto(chave) === limparTexto(nome)
-      );
+      const nomeLimpo = limparTexto(nome);
+
+      const encontrado = chaves.find((chave) => {
+        const chaveLimpa = limparTexto(chave);
+        return chaveLimpa === nomeLimpo || chaveLimpa.includes(nomeLimpo);
+      });
 
       if (encontrado) return row[encontrado];
     }
@@ -91,7 +96,6 @@ export default function Home() {
         const dia = String(dataExcel.d).padStart(2, '0');
         const mes = String(dataExcel.m).padStart(2, '0');
         const ano = dataExcel.y;
-
         return `${dia}/${mes}/${ano}`;
       }
     }
@@ -103,12 +107,7 @@ export default function Home() {
     return String(valor);
   }
 
-  function calcularLucro(
-    stake: number,
-    odd: number,
-    resultado: string,
-    lucroPlanilha: number
-  ) {
+  function calcularLucro(stake: number, odd: number, resultado: string, lucroPlanilha: number) {
     if (lucroPlanilha !== 0) return lucroPlanilha;
 
     const r = limparTexto(resultado);
@@ -153,13 +152,17 @@ export default function Home() {
         defval: '',
       });
 
+      if (rows.length > 0) {
+        setColunasDetectadas(Object.keys(rows[0]));
+      }
+
       const dados: Entrada[] = rows.map((row, index) => {
         const dataOriginal = pegarCampo(row, [
           'Data',
           'Dia',
           'Date',
           'Data da aposta',
-          'Data Aposta',
+          'Data aposta',
           'Dt',
         ]);
 
@@ -192,10 +195,18 @@ export default function Home() {
         const stakeOriginal = pegarCampo(row, [
           'Stake',
           'Valor',
+          'Valor apostado',
+          'Valor da aposta',
+          'Valor aplicado',
+          'Aplicado',
           'Entrada',
           'Investimento',
+          'Investido',
           'Apostado',
-          'Valor apostado',
+          'Unidade',
+          'Unidades',
+          'Montante',
+          'Custo',
         ]);
 
         const resultadoOriginal = pegarCampo(row, [
@@ -204,11 +215,14 @@ export default function Home() {
           'Situação',
           'Situacao',
           'Resultado aposta',
+          'Green Red',
+          'Green/Red',
         ]);
 
         const lucroOriginal = pegarCampo(row, [
           'Lucro',
-          'Retorno',
+          'Retorno líquido',
+          'Retorno liquido',
           'Profit',
           'P/L',
           'PL',
@@ -299,17 +313,18 @@ export default function Home() {
       <section style={card}>
         <h2>Importar Excel</h2>
 
-        <p style={textoSecundario}>
-          O sistema tenta reconhecer colunas como Data, Jogo, Mercado, Odd, Stake, Resultado,
-          Lucro, Valor, Entrada, Evento e Status.
-        </p>
-
         <input
           type="file"
           accept=".xlsx,.xls,.csv"
           onChange={importarExcel}
           style={input}
         />
+
+        {colunasDetectadas.length > 0 && (
+          <p style={textoSecundario}>
+            Colunas detectadas: {colunasDetectadas.join(' | ')}
+          </p>
+        )}
       </section>
 
       <section style={card}>
@@ -475,6 +490,7 @@ const input = {
 
 const textoSecundario = {
   color: '#9ca3af',
+  marginTop: 12,
 };
 
 const table = {
