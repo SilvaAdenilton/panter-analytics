@@ -1,6 +1,22 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+import * as XLSX from 'xlsx';
+
+import {
+  ResponsiveContainer,
+  LineChart,
+  Line,
+  CartesianGrid,
+  XAxis,
+  YAxis,
+  Tooltip,
+  BarChart,
+  Bar,
+  PieChart,
+  Pie,
+  Cell,
+} from 'recharts';
 
 type Entrada = {
   id: number;
@@ -18,351 +34,393 @@ export default function Home() {
 
   const [entradas, setEntradas] = useState<Entrada[]>([]);
 
-  const [form, setForm] = useState({
-    data: '',
-    jogo: '',
-    mercado: '',
-    odd: '',
-    stake: '',
-    resultado: 'green',
-  });
-
-  function adicionarEntrada() {
-    if (
-      !form.data ||
-      !form.jogo ||
-      !form.mercado ||
-      !form.odd ||
-      !form.stake
-    ) {
-      alert('Preencha todos os campos');
-      return;
-    }
-
-    const odd = Number(form.odd);
-    const stake = Number(form.stake);
-
-    let lucro = 0;
-
-    if (form.resultado === 'green') {
-      lucro = stake * odd - stake;
-    }
-
-    if (form.resultado === 'red') {
-      lucro = -stake;
-    }
-
-    const novaEntrada: Entrada = {
-      id: Date.now(),
-      data: form.data,
-      jogo: form.jogo,
-      mercado: form.mercado,
-      odd,
-      stake,
-      resultado: form.resultado,
-      lucro,
-    };
-
-    setEntradas([...entradas, novaEntrada]);
-
-    setForm({
-      data: '',
-      jogo: '',
-      mercado: '',
-      odd: '',
-      stake: '',
-      resultado: 'green',
+  function moeda(valor: number) {
+    return valor.toLocaleString('pt-BR', {
+      style: 'currency',
+      currency: 'BRL',
     });
   }
 
+  function converterNumero(valor: any) {
+    const numero = Number(
+      String(valor ?? '')
+        .replace('R$', '')
+        .replace(',', '.')
+    );
+
+    return Number.isFinite(numero) ? numero : 0;
+  }
+
+  function importarExcel(
+    event: React.ChangeEvent<HTMLInputElement>
+  ) {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const reader = new FileReader();
+
+    reader.onload = (e) => {
+      const data = new Uint8Array(
+        e.target?.result as ArrayBuffer
+      );
+
+      const workbook = XLSX.read(data, {
+        type: 'array',
+      });
+
+      const sheet =
+        workbook.Sheets[workbook.SheetNames[0]];
+
+      const rows: any[] =
+        XLSX.utils.sheet_to_json(sheet);
+
+      const entradasImportadas: Entrada[] =
+        rows.map((row, index) => {
+          const stake = converterNumero(
+            row.Stake || row.stake
+          );
+
+          const odd = converterNumero(
+            row.Odd || row.odd
+          );
+
+          const resultado = String(
+            row.Resultado ||
+              row.resultado ||
+              ''
+          ).toLowerCase();
+
+          let lucro = 0;
+
+          if (resultado.includes('green')) {
+            lucro = stake * odd - stake;
+          }
+
+          if (resultado.includes('red')) {
+            lucro = -stake;
+          }
+
+          if (
+            resultado.includes('cashout') ||
+            resultado.includes('void') ||
+            resultado.includes('anulada')
+          ) {
+            lucro = 0;
+          }
+
+          return {
+            id: Date.now() + index,
+            data: String(
+              row.Data || row.data || ''
+            ),
+            jogo: String(
+              row.Jogo || row.jogo || ''
+            ),
+            mercado: String(
+              row.Mercado || row.mercado || ''
+            ),
+            odd,
+            stake,
+            resultado,
+            lucro,
+          };
+        });
+
+      setEntradas(entradasImportadas);
+    };
+
+    reader.readAsArrayBuffer(file);
+  }
+
   const resumo = useMemo(() => {
+    const totalStake = entradas.reduce(
+      (acc, item) => acc + item.stake,
+      0
+    );
+
     const lucroTotal = entradas.reduce(
       (acc, item) => acc + item.lucro,
       0
     );
 
-    const greens = entradas.filter(
-      (e) => e.resultado === 'green'
+    const greens = entradas.filter((e) =>
+      e.resultado.includes('green')
     ).length;
 
-    const reds = entradas.filter(
-      (e) => e.resultado === 'red'
+    const reds = entradas.filter((e) =>
+      e.resultado.includes('red')
     ).length;
 
-    const bancaAtual = bancaInicial + lucroTotal;
+    const abertas = entradas.filter((e) =>
+      e.resultado.includes('aberta')
+    ).length;
+
+    const roi =
+      totalStake > 0
+        ? (lucroTotal / totalStake) * 100
+        : 0;
+
+    const taxaGreen =
+      entradas.length > 0
+        ? (greens / entradas.length) * 100
+        : 0;
 
     return {
+      bancaAtual:
+        bancaInicial + lucroTotal,
+      totalStake,
       lucroTotal,
       greens,
       reds,
-      bancaAtual,
+      abertas,
+      roi,
+      taxaGreen,
     };
   }, [entradas, bancaInicial]);
 
+  const graficoBanca = useMemo(() => {
+    let banca = bancaInicial;
+
+    return entradas.map((e, index) => {
+      banca += e.lucro;
+
+      return {
+        entrada: `#${index + 1}`,
+        banca,
+        lucro: e.lucro,
+      };
+    });
+  }, [entradas, bancaInicial]);
+
+  const pizzaResultados = [
+    {
+      name: 'Green',
+      value: resumo.greens,
+    },
+    {
+      name: 'Red',
+      value: resumo.reds,
+    },
+    {
+      name: 'Abertas',
+      value: resumo.abertas,
+    },
+  ];
+
   return (
-    <main
-      style={{
-        padding: 30,
-        background: '#111827',
-        color: 'white',
-        minHeight: '100vh',
-        fontFamily: 'Arial',
-      }}
-    >
-      <h1
-        style={{
-          marginBottom: 10,
-        }}
-      >
+    <main style={pageStyle}>
+      <h1 style={titulo}>
         Dashboard Panter
       </h1>
 
-      <p
-        style={{
-          color: '#9ca3af',
-          marginBottom: 30,
-        }}
-      >
-        Gestão operacional de banca esportiva.
+      <p style={subtitulo}>
+        Controle operacional de banca esportiva com Excel e gráficos.
       </p>
 
-      <div
-        style={{
-          background: '#1f2937',
-          padding: 20,
-          borderRadius: 12,
-          marginBottom: 20,
-        }}
-      >
+      <section style={card}>
+        <h2>Importar Excel</h2>
+
+        <p style={textoSecundario}>
+          Estrutura esperada:
+          <br />
+          Data | Jogo | Mercado | Odd | Stake | Resultado
+        </p>
+
+        <input
+          type="file"
+          accept=".xlsx,.xls,.csv"
+          onChange={importarExcel}
+          style={input}
+        />
+      </section>
+
+      <section style={card}>
         <h2>Banca Inicial</h2>
 
         <input
           type="number"
           value={bancaInicial}
           onChange={(e) =>
-            setBancaInicial(Number(e.target.value))
+            setBancaInicial(
+              Number(e.target.value)
+            )
           }
-          style={inputStyle}
+          style={input}
         />
-      </div>
+      </section>
 
-      <div
-        style={{
-          display: 'grid',
-          gridTemplateColumns:
-            'repeat(auto-fit,minmax(220px,1fr))',
-          gap: 15,
-          marginBottom: 20,
-        }}
-      >
-        <Card
+      <section style={grid}>
+        <ResumoCard
           titulo="Banca Atual"
-          valor={`R$ ${resumo.bancaAtual.toFixed(2)}`}
+          valor={moeda(
+            resumo.bancaAtual
+          )}
         />
 
-        <Card
-          titulo="Lucro"
-          valor={`R$ ${resumo.lucroTotal.toFixed(2)}`}
+        <ResumoCard
+          titulo="Lucro Total"
+          valor={moeda(
+            resumo.lucroTotal
+          )}
         />
 
-        <Card
-          titulo="Greens"
-          valor={String(resumo.greens)}
+        <ResumoCard
+          titulo="Stake Total"
+          valor={moeda(
+            resumo.totalStake
+          )}
         />
 
-        <Card
-          titulo="Reds"
-          valor={String(resumo.reds)}
+        <ResumoCard
+          titulo="ROI"
+          valor={`${resumo.roi.toFixed(
+            2
+          )}%`}
         />
-      </div>
 
-      <div
-        style={{
-          background: '#1f2937',
-          padding: 20,
-          borderRadius: 12,
-          marginBottom: 20,
-        }}
-      >
-        <h2>Nova Entrada</h2>
+        <ResumoCard
+          titulo="Taxa Green"
+          valor={`${resumo.taxaGreen.toFixed(
+            2
+          )}%`}
+        />
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns:
-              'repeat(auto-fit,minmax(220px,1fr))',
-            gap: 12,
-          }}
+        <ResumoCard
+          titulo="Entradas"
+          valor={String(
+            entradas.length
+          )}
+        />
+      </section>
+
+      <section style={card}>
+        <h2>Evolução da Banca</h2>
+
+        <ResponsiveContainer
+          width="100%"
+          height={350}
         >
-          <input
-            type="date"
-            value={form.data}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                data: e.target.value,
-              })
-            }
-            style={inputStyle}
-          />
+          <LineChart data={graficoBanca}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="entrada" />
+            <YAxis />
+            <Tooltip />
+            <Line
+              type="monotone"
+              dataKey="banca"
+              stroke="#22c55e"
+              strokeWidth={3}
+            />
+          </LineChart>
+        </ResponsiveContainer>
+      </section>
 
-          <input
-            placeholder="Jogo"
-            value={form.jogo}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                jogo: e.target.value,
-              })
-            }
-            style={inputStyle}
-          />
+      <section style={card}>
+        <h2>Lucro por Entrada</h2>
 
-          <input
-            placeholder="Mercado"
-            value={form.mercado}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                mercado: e.target.value,
-              })
-            }
-            style={inputStyle}
-          />
-
-          <input
-            type="number"
-            placeholder="Odd"
-            value={form.odd}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                odd: e.target.value,
-              })
-            }
-            style={inputStyle}
-          />
-
-          <input
-            type="number"
-            placeholder="Stake"
-            value={form.stake}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                stake: e.target.value,
-              })
-            }
-            style={inputStyle}
-          />
-
-          <select
-            value={form.resultado}
-            onChange={(e) =>
-              setForm({
-                ...form,
-                resultado: e.target.value,
-              })
-            }
-            style={inputStyle}
-          >
-            <option value="green">Green</option>
-            <option value="red">Red</option>
-          </select>
-        </div>
-
-        <button
-          onClick={adicionarEntrada}
-          style={{
-            marginTop: 20,
-            background: '#2563eb',
-            color: 'white',
-            border: 'none',
-            padding: '12px 20px',
-            borderRadius: 10,
-            cursor: 'pointer',
-            fontWeight: 'bold',
-          }}
+        <ResponsiveContainer
+          width="100%"
+          height={350}
         >
-          Adicionar Entrada
-        </button>
-      </div>
+          <BarChart data={graficoBanca}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="entrada" />
+            <YAxis />
+            <Tooltip />
+            <Bar
+              dataKey="lucro"
+              fill="#3b82f6"
+            />
+          </BarChart>
+        </ResponsiveContainer>
+      </section>
 
-      <div
-        style={{
-          background: '#1f2937',
-          padding: 20,
-          borderRadius: 12,
-        }}
-      >
-        <h2>Histórico</h2>
+      <section style={card}>
+        <h2>Distribuição</h2>
+
+        <ResponsiveContainer
+          width="100%"
+          height={320}
+        >
+          <PieChart>
+            <Pie
+              data={pizzaResultados}
+              dataKey="value"
+              nameKey="name"
+              outerRadius={100}
+              label
+            >
+              <Cell fill="#22c55e" />
+              <Cell fill="#ef4444" />
+              <Cell fill="#facc15" />
+            </Pie>
+
+            <Tooltip />
+          </PieChart>
+        </ResponsiveContainer>
+      </section>
+
+      <section style={card}>
+        <h2>Tabela Operacional</h2>
 
         <div
           style={{
             overflowX: 'auto',
           }}
         >
-          <table
-            style={{
-              width: '100%',
-              borderCollapse: 'collapse',
-              marginTop: 20,
-            }}
-          >
+          <table style={table}>
             <thead>
-              <tr
-                style={{
-                  background: '#374151',
-                }}
-              >
-                <th style={thStyle}>Data</th>
-                <th style={thStyle}>Jogo</th>
-                <th style={thStyle}>Mercado</th>
-                <th style={thStyle}>Odd</th>
-                <th style={thStyle}>Stake</th>
-                <th style={thStyle}>Resultado</th>
-                <th style={thStyle}>Lucro</th>
+              <tr>
+                <th style={th}>Data</th>
+                <th style={th}>Jogo</th>
+                <th style={th}>Mercado</th>
+                <th style={th}>Odd</th>
+                <th style={th}>Stake</th>
+                <th style={th}>Resultado</th>
+                <th style={th}>Lucro</th>
               </tr>
             </thead>
 
             <tbody>
               {entradas.map((e) => (
-                <tr
-                  key={e.id}
-                  style={{
-                    borderBottom:
-                      '1px solid #374151',
-                  }}
-                >
-                  <td style={tdStyle}>{e.data}</td>
+                <tr key={e.id}>
+                  <td style={td}>
+                    {e.data}
+                  </td>
 
-                  <td style={tdStyle}>{e.jogo}</td>
+                  <td style={td}>
+                    {e.jogo}
+                  </td>
 
-                  <td style={tdStyle}>
+                  <td style={td}>
                     {e.mercado}
                   </td>
 
-                  <td style={tdStyle}>{e.odd}</td>
-
-                  <td style={tdStyle}>
-                    R$ {e.stake}
+                  <td style={td}>
+                    {e.odd}
                   </td>
 
-                  <td style={tdStyle}>
+                  <td style={td}>
+                    {moeda(e.stake)}
+                  </td>
+
+                  <td style={td}>
                     {e.resultado}
                   </td>
 
                   <td
                     style={{
-                      ...tdStyle,
+                      ...td,
                       color:
                         e.lucro >= 0
                           ? '#22c55e'
                           : '#ef4444',
-                      fontWeight: 'bold',
+                      fontWeight:
+                        'bold',
                     }}
                   >
-                    R$ {e.lucro.toFixed(2)}
+                    {moeda(e.lucro)}
                   </td>
                 </tr>
               ))}
@@ -371,21 +429,16 @@ export default function Home() {
         </div>
 
         {entradas.length === 0 && (
-          <p
-            style={{
-              marginTop: 20,
-              color: '#9ca3af',
-            }}
-          >
-            Nenhuma entrada cadastrada.
+          <p style={textoSecundario}>
+            Nenhuma planilha importada.
           </p>
         )}
-      </div>
+      </section>
     </main>
   );
 }
 
-function Card({
+function ResumoCard({
   titulo,
   valor,
 }: {
@@ -393,19 +446,8 @@ function Card({
   valor: string;
 }) {
   return (
-    <div
-      style={{
-        background: '#1f2937',
-        padding: 20,
-        borderRadius: 12,
-      }}
-    >
-      <p
-        style={{
-          color: '#9ca3af',
-          marginBottom: 10,
-        }}
-      >
+    <div style={card}>
+      <p style={textoSecundario}>
         {titulo}
       </p>
 
@@ -420,20 +462,64 @@ function Card({
   );
 }
 
-const inputStyle = {
+const pageStyle = {
+  background: '#111827',
+  color: 'white',
+  minHeight: '100vh',
+  padding: 30,
+  fontFamily: 'Arial',
+};
+
+const titulo = {
+  fontSize: 38,
+  marginBottom: 10,
+};
+
+const subtitulo = {
+  color: '#9ca3af',
+  marginBottom: 30,
+};
+
+const card = {
+  background: '#1f2937',
+  padding: 20,
+  borderRadius: 16,
+  marginBottom: 20,
+};
+
+const grid = {
+  display: 'grid',
+  gridTemplateColumns:
+    'repeat(auto-fit,minmax(220px,1fr))',
+  gap: 15,
+};
+
+const input = {
+  width: '100%',
   background: '#374151',
+  color: 'white',
   border: '1px solid #4b5563',
   padding: 12,
   borderRadius: 10,
-  color: 'white',
-  width: '100%',
 };
 
-const thStyle = {
+const textoSecundario = {
+  color: '#9ca3af',
+};
+
+const table = {
+  width: '100%',
+  borderCollapse: 'collapse' as const,
+};
+
+const th = {
+  background: '#374151',
   padding: 14,
   textAlign: 'left' as const,
 };
 
-const tdStyle = {
+const td = {
   padding: 14,
+  borderBottom:
+    '1px solid #374151',
 };
