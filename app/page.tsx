@@ -119,17 +119,6 @@ export default function Home() {
     return 'outros';
   }
 
-  function calcularLucro(stake: number, odd: number, resultado: string, lucroPlanilha: number) {
-    if (lucroPlanilha !== 0) return lucroPlanilha;
-
-    const r = classificarResultado(resultado);
-
-    if (r === 'green') return stake * odd - stake;
-    if (r === 'red') return -stake;
-
-    return 0;
-  }
-
   function normalizarMercado(mercado: string) {
     const m = limparTexto(mercado);
 
@@ -243,6 +232,11 @@ export default function Home() {
 
         const lucroOriginal = pegarCampo(row, [
           'Lucro',
+          'Lucro/Prejuízo',
+          'Lucro Prejuízo',
+          'Lucro prejuizo',
+          'Lucro líquido',
+          'Lucro liquido',
           'Retorno líquido',
           'Retorno liquido',
           'Profit',
@@ -264,7 +258,7 @@ export default function Home() {
           odd,
           stake,
           resultado: resultado || 'não informado',
-          lucro: calcularLucro(stake, odd, resultado, lucroPlanilha),
+          lucro: lucroPlanilha,
         };
       });
 
