@@ -25,13 +25,16 @@ type Entrada = {
   odd: number;
   stake: number;
   resultado: string;
+  retorno: number;
   lucro: number;
+  obs: string;
 };
 
 export default function Home() {
   const [bancaInicial, setBancaInicial] = useState(1000);
   const [entradas, setEntradas] = useState<Entrada[]>([]);
   const [colunasDetectadas, setColunasDetectadas] = useState<string[]>([]);
+  const [guiaUsada, setGuiaUsada] = useState('');
 
   function moeda(valor: number) {
     return valor.toLocaleString('pt-BR', {
@@ -76,6 +79,9 @@ export default function Home() {
       .replace(/\s/g, '')
       .trim();
 
+    const negativoContabil = texto.includes('(') && texto.includes(')');
+    texto = texto.replace('(', '').replace(')', '');
+
     if (texto.includes(',') && texto.includes('.')) {
       texto = texto.replace(/\./g, '').replace(',', '.');
     } else {
@@ -83,7 +89,9 @@ export default function Home() {
     }
 
     const numero = Number(texto);
-    return Number.isFinite(numero) ? numero : 0;
+    if (!Number.isFinite(numero)) return 0;
+
+    return negativoContabil ? -Math.abs(numero) : numero;
   }
 
   function converterData(valor: any) {
@@ -129,6 +137,7 @@ export default function Home() {
     if (m.includes('dnb') || m.includes('empate anula')) return 'DNB';
     if (m.includes('handicap') || m.includes('hc')) return 'Handicap';
     if (m.includes('cartao') || m.includes('cartão')) return 'Cartões';
+    if (m.includes('multipla') || m.includes('múltipla')) return 'Múltiplas';
 
     return mercado || 'Não informado';
   }
@@ -157,7 +166,15 @@ export default function Home() {
         cellDates: true,
       });
 
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const nomeGuiaRegistro =
+        workbook.SheetNames.find((nome) => limparTexto(nome).includes('registro de apostas')) ||
+        workbook.SheetNames.find((nome) => limparTexto(nome).includes('registros de apostas')) ||
+        workbook.SheetNames.find((nome) => limparTexto(nome).includes('apostas')) ||
+        workbook.SheetNames[0];
+
+      setGuiaUsada(nomeGuiaRegistro);
+
+      const sheet = workbook.Sheets[nomeGuiaRegistro];
 
       const rows: any[] = XLSX.utils.sheet_to_json(sheet, {
         defval: '',
@@ -167,100 +184,113 @@ export default function Home() {
         setColunasDetectadas(Object.keys(rows[0]));
       }
 
-      const dados: Entrada[] = rows.map((row, index) => {
-        const dataOriginal = pegarCampo(row, [
-          'Data',
-          'Dia',
-          'Date',
-          'Data da aposta',
-          'Data aposta',
-          'Dt',
-        ]);
+      const dados: Entrada[] = rows
+        .map((row, index) => {
+          const dataOriginal = pegarCampo(row, [
+            'Data',
+            'Dia',
+            'Date',
+            'Data da aposta',
+            'Data aposta',
+            'Dt',
+          ]);
 
-        const jogo = pegarCampo(row, [
-          'Jogo',
-          'Partida',
-          'Evento',
-          'Confronto',
-          'Match',
-        ]);
+          const jogo = pegarCampo(row, [
+            'Jogo',
+            'Partida',
+            'Evento',
+            'Confronto',
+            'Match',
+          ]);
 
-        const mercado = pegarCampo(row, [
-          'Mercado',
-          'Market',
-          'Aposta',
-          'Tipo',
-          'Seleção',
-          'Selecao',
-        ]);
+          const mercado = pegarCampo(row, [
+            'Mercado',
+            'Market',
+            'Aposta',
+            'Tipo',
+            'Seleção',
+            'Selecao',
+          ]);
 
-        const oddOriginal = pegarCampo(row, [
-          'Odd',
-          'Odds',
-          'Cotação',
-          'Cotacao',
-          'Preço',
-          'Preco',
-        ]);
+          const oddOriginal = pegarCampo(row, [
+            'Odd',
+            'Odds',
+            'Cotação',
+            'Cotacao',
+            'Preço',
+            'Preco',
+          ]);
 
-        const stakeOriginal = pegarCampo(row, [
-          'Stake',
-          'Valor',
-          'Valor apostado',
-          'Valor da aposta',
-          'Valor aplicado',
-          'Aplicado',
-          'Entrada',
-          'Investimento',
-          'Investido',
-          'Apostado',
-          'Unidade',
-          'Unidades',
-          'Montante',
-          'Custo',
-        ]);
+          const stakeOriginal = pegarCampo(row, [
+            'Stake (R$)',
+            'Stake',
+            'Valor',
+            'Valor apostado',
+            'Valor da aposta',
+            'Valor aplicado',
+            'Aplicado',
+            'Entrada',
+            'Investimento',
+            'Investido',
+            'Apostado',
+          ]);
 
-        const resultadoOriginal = pegarCampo(row, [
-          'Resultado',
-          'Status',
-          'Situação',
-          'Situacao',
-          'Resultado aposta',
-          'Green Red',
-          'Green/Red',
-        ]);
+          const resultadoOriginal = pegarCampo(row, [
+            'Resultado',
+            'Status',
+            'Situação',
+            'Situacao',
+            'Resultado aposta',
+            'Green Red',
+            'Green/Red',
+          ]);
 
-        const lucroOriginal = pegarCampo(row, [
-          'Lucro',
-          'Lucro/Prejuízo',
-          'Lucro Prejuízo',
-          'Lucro prejuizo',
-          'Lucro líquido',
-          'Lucro liquido',
-          'Retorno líquido',
-          'Retorno liquido',
-          'Profit',
-          'P/L',
-          'PL',
-          'Resultado financeiro',
-        ]);
+          const retornoOriginal = pegarCampo(row, [
+            'Retorno (R$)',
+            'Retorno R$',
+            'Retorno',
+            'Retorno bruto',
+            'Payout',
+            'Ganhos',
+          ]);
 
-        const odd = converterNumero(oddOriginal);
-        const stake = converterNumero(stakeOriginal);
-        const resultado = String(resultadoOriginal || '').toLowerCase();
-        const lucroPlanilha = converterNumero(lucroOriginal);
+          const lucroOriginal = pegarCampo(row, [
+            'Lucro/Prejuízo (R$)',
+            'Lucro/Prejuizo (R$)',
+            'Lucro Prejuízo',
+            'Lucro Prejuizo',
+            'Lucro prejuízo',
+            'Lucro prejuizo',
+            'Lucro',
+            'P/L',
+            'PL',
+            'Resultado financeiro',
+          ]);
 
-        return {
-          id: Date.now() + index,
-          data: converterData(dataOriginal),
-          jogo: String(jogo || ''),
-          mercado: String(mercado || ''),
-          odd,
-          stake,
-          resultado: resultado || 'não informado',
-          lucro: lucroPlanilha,
-        };
-      });
+          const obsOriginal = pegarCampo(row, [
+            'Obs.',
+            'Obs',
+            'Observação',
+            'Observacao',
+            'Notas',
+            'Comentário',
+            'Comentario',
+          ]);
+
+          return {
+            id: Date.now() + index,
+            data: converterData(dataOriginal),
+            jogo: String(jogo || ''),
+            mercado: String(mercado || ''),
+            odd: converterNumero(oddOriginal),
+            stake: converterNumero(stakeOriginal),
+            resultado: String(resultadoOriginal || 'não informado').toLowerCase(),
+            retorno: converterNumero(retornoOriginal),
+            lucro: converterNumero(lucroOriginal),
+            obs: String(obsOriginal || ''),
+          };
+        })
+        .filter((e) => e.data || e.jogo || e.mercado || e.stake || e.retorno || e.lucro);
 
       setEntradas(dados);
     };
@@ -270,13 +300,18 @@ export default function Home() {
 
   const resumo = useMemo(() => {
     const totalStake = entradas.reduce((acc, e) => acc + e.stake, 0);
+    const retornoTotal = entradas.reduce((acc, e) => acc + e.retorno, 0);
     const lucroTotal = entradas.reduce((acc, e) => acc + e.lucro, 0);
 
     const greens = entradas.filter((e) => classificarResultado(e.resultado) === 'green').length;
     const reds = entradas.filter((e) => classificarResultado(e.resultado) === 'red').length;
+    const cashouts = entradas.filter((e) => classificarResultado(e.resultado) === 'cashout').length;
+    const voids = entradas.filter((e) => classificarResultado(e.resultado) === 'void').length;
+    const outros = Math.max(entradas.length - greens - reds - cashouts - voids, 0);
 
     const roi = totalStake > 0 ? (lucroTotal / totalStake) * 100 : 0;
     const taxaGreen = entradas.length > 0 ? (greens / entradas.length) * 100 : 0;
+    const taxaRed = entradas.length > 0 ? (reds / entradas.length) * 100 : 0;
 
     let banca = bancaInicial;
     let pico = bancaInicial;
@@ -318,15 +353,22 @@ export default function Home() {
     return {
       bancaAtual: bancaInicial + lucroTotal,
       totalStake,
+      retornoTotal,
       lucroTotal,
       greens,
       reds,
+      cashouts,
+      voids,
+      outros,
       roi,
       taxaGreen,
+      taxaRed,
       maiorDrawdown,
       maiorSequenciaRed,
       maiorSequenciaGreen,
       stakeMedia: entradas.length ? totalStake / entradas.length : 0,
+      lucroMedio: entradas.length ? lucroTotal / entradas.length : 0,
+      retornoMedio: entradas.length ? retornoTotal / entradas.length : 0,
     };
   }, [entradas, bancaInicial]);
 
@@ -338,26 +380,37 @@ export default function Home() {
 
       return {
         entrada: `#${index + 1}`,
+        data: e.data,
+        jogo: e.jogo,
         banca,
+        stake: e.stake,
+        retorno: e.retorno,
         lucro: e.lucro,
       };
     });
   }, [entradas, bancaInicial]);
 
-  function agruparPor(chave: 'mercado' | 'odd') {
+  function agruparPor(chave: 'mercado' | 'odd' | 'resultado') {
     const mapa: Record<string, any> = {};
 
     entradas.forEach((e) => {
-      const key = chave === 'mercado' ? normalizarMercado(e.mercado) : faixaOdd(e.odd);
+      let key = '';
+
+      if (chave === 'mercado') key = normalizarMercado(e.mercado);
+      if (chave === 'odd') key = faixaOdd(e.odd);
+      if (chave === 'resultado') key = classificarResultado(e.resultado);
 
       if (!mapa[key]) {
         mapa[key] = {
           nome: key,
           entradas: 0,
           stake: 0,
+          retorno: 0,
           lucro: 0,
           greens: 0,
           reds: 0,
+          cashouts: 0,
+          voids: 0,
           roi: 0,
           taxaGreen: 0,
         };
@@ -365,10 +418,15 @@ export default function Home() {
 
       mapa[key].entradas++;
       mapa[key].stake += e.stake;
+      mapa[key].retorno += e.retorno;
       mapa[key].lucro += e.lucro;
 
-      if (classificarResultado(e.resultado) === 'green') mapa[key].greens++;
-      if (classificarResultado(e.resultado) === 'red') mapa[key].reds++;
+      const resultado = classificarResultado(e.resultado);
+
+      if (resultado === 'green') mapa[key].greens++;
+      if (resultado === 'red') mapa[key].reds++;
+      if (resultado === 'cashout') mapa[key].cashouts++;
+      if (resultado === 'void') mapa[key].voids++;
     });
 
     return Object.values(mapa)
@@ -382,14 +440,14 @@ export default function Home() {
 
   const porMercado = useMemo(() => agruparPor('mercado'), [entradas]);
   const porOdd = useMemo(() => agruparPor('odd'), [entradas]);
+  const porResultado = useMemo(() => agruparPor('resultado'), [entradas]);
 
   const pizzaResultados = [
     { name: 'Green', value: resumo.greens },
     { name: 'Red', value: resumo.reds },
-    {
-      name: 'Outros',
-      value: Math.max(entradas.length - resumo.greens - resumo.reds, 0),
-    },
+    { name: 'Cashout', value: resumo.cashouts },
+    { name: 'Void', value: resumo.voids },
+    { name: 'Outros', value: resumo.outros },
   ];
 
   const leituraPanter = useMemo(() => {
@@ -416,7 +474,7 @@ export default function Home() {
       <h1 style={titulo}>Dashboard Panter Pro</h1>
 
       <p style={subtitulo}>
-        Análise de banca, mercados, odds, drawdown e consistência operacional.
+        Dashboard herdando os dados reais da guia Registro de Apostas.
       </p>
 
       <section style={card}>
@@ -428,6 +486,12 @@ export default function Home() {
           onChange={importarExcel}
           style={input}
         />
+
+        {guiaUsada && (
+          <p style={textoSecundario}>
+            Guia utilizada: {guiaUsada}
+          </p>
+        )}
 
         {colunasDetectadas.length > 0 && (
           <p style={textoSecundario}>
@@ -450,13 +514,21 @@ export default function Home() {
       <section style={grid}>
         <ResumoCard titulo="Banca Atual" valor={moeda(resumo.bancaAtual)} />
         <ResumoCard titulo="Lucro Total" valor={moeda(resumo.lucroTotal)} />
+        <ResumoCard titulo="Retorno Total" valor={moeda(resumo.retornoTotal)} />
         <ResumoCard titulo="Stake Total" valor={moeda(resumo.totalStake)} />
         <ResumoCard titulo="ROI" valor={`${resumo.roi.toFixed(2)}%`} />
         <ResumoCard titulo="Taxa Green" valor={`${resumo.taxaGreen.toFixed(2)}%`} />
+        <ResumoCard titulo="Taxa Red" valor={`${resumo.taxaRed.toFixed(2)}%`} />
+        <ResumoCard titulo="Greens" valor={String(resumo.greens)} />
+        <ResumoCard titulo="Reds" valor={String(resumo.reds)} />
+        <ResumoCard titulo="Cashouts" valor={String(resumo.cashouts)} />
+        <ResumoCard titulo="Voids" valor={String(resumo.voids)} />
         <ResumoCard titulo="Drawdown Máx." valor={moeda(resumo.maiorDrawdown)} />
         <ResumoCard titulo="Maior Seq. Green" valor={String(resumo.maiorSequenciaGreen)} />
         <ResumoCard titulo="Maior Seq. Red" valor={String(resumo.maiorSequenciaRed)} />
         <ResumoCard titulo="Stake Média" valor={moeda(resumo.stakeMedia)} />
+        <ResumoCard titulo="Lucro Médio" valor={moeda(resumo.lucroMedio)} />
+        <ResumoCard titulo="Retorno Médio" valor={moeda(resumo.retornoMedio)} />
         <ResumoCard titulo="Entradas" valor={String(entradas.length)} />
       </section>
 
@@ -473,22 +545,36 @@ export default function Home() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="entrada" />
             <YAxis />
-            <Tooltip />
+            <Tooltip formatter={(value: any) => moeda(Number(value))} />
             <Line type="monotone" dataKey="banca" stroke="#22c55e" strokeWidth={3} />
           </LineChart>
         </ResponsiveContainer>
       </section>
 
       <section style={card}>
-        <h2>Lucro por Entrada</h2>
+        <h2>Lucro/Prejuízo por Entrada</h2>
 
         <ResponsiveContainer width="100%" height={350}>
           <BarChart data={graficoBanca}>
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="entrada" />
             <YAxis />
-            <Tooltip />
+            <Tooltip formatter={(value: any) => moeda(Number(value))} />
             <Bar dataKey="lucro" fill="#3b82f6" />
+          </BarChart>
+        </ResponsiveContainer>
+      </section>
+
+      <section style={card}>
+        <h2>Retorno por Entrada</h2>
+
+        <ResponsiveContainer width="100%" height={350}>
+          <BarChart data={graficoBanca}>
+            <CartesianGrid strokeDasharray="3 3" />
+            <XAxis dataKey="entrada" />
+            <YAxis />
+            <Tooltip formatter={(value: any) => moeda(Number(value))} />
+            <Bar dataKey="retorno" fill="#14b8a6" />
           </BarChart>
         </ResponsiveContainer>
       </section>
@@ -501,7 +587,7 @@ export default function Home() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="nome" />
             <YAxis />
-            <Tooltip />
+            <Tooltip formatter={(value: any) => moeda(Number(value))} />
             <Bar dataKey="lucro" fill="#22c55e" />
           </BarChart>
         </ResponsiveContainer>
@@ -515,7 +601,7 @@ export default function Home() {
             <CartesianGrid strokeDasharray="3 3" />
             <XAxis dataKey="nome" />
             <YAxis />
-            <Tooltip />
+            <Tooltip formatter={(value: any) => moeda(Number(value))} />
             <Bar dataKey="lucro" fill="#f59e0b" />
           </BarChart>
         </ResponsiveContainer>
@@ -529,7 +615,9 @@ export default function Home() {
             <Pie data={pizzaResultados} dataKey="value" nameKey="name" outerRadius={100} label>
               <Cell fill="#22c55e" />
               <Cell fill="#ef4444" />
+              <Cell fill="#3b82f6" />
               <Cell fill="#facc15" />
+              <Cell fill="#9ca3af" />
             </Pie>
             <Tooltip />
           </PieChart>
@@ -538,9 +626,10 @@ export default function Home() {
 
       <TabelaAnalitica titulo="Ranking por Mercado" dados={porMercado} moeda={moeda} />
       <TabelaAnalitica titulo="Ranking por Faixa de Odd" dados={porOdd} moeda={moeda} />
+      <TabelaAnalitica titulo="Ranking por Resultado" dados={porResultado} moeda={moeda} />
 
       <section style={card}>
-        <h2>Tabela Operacional</h2>
+        <h2>Registro de Apostas</h2>
 
         <div style={{ overflowX: 'auto' }}>
           <table style={table}>
@@ -552,7 +641,9 @@ export default function Home() {
                 <th style={th}>Odd</th>
                 <th style={th}>Stake</th>
                 <th style={th}>Resultado</th>
-                <th style={th}>Lucro</th>
+                <th style={th}>Retorno</th>
+                <th style={th}>Lucro/Prejuízo</th>
+                <th style={th}>Obs.</th>
               </tr>
             </thead>
 
@@ -564,7 +655,21 @@ export default function Home() {
                   <td style={td}>{e.mercado}</td>
                   <td style={td}>{e.odd}</td>
                   <td style={td}>{moeda(e.stake)}</td>
-                  <td style={td}>{e.resultado}</td>
+                  <td
+                    style={{
+                      ...td,
+                      color:
+                        classificarResultado(e.resultado) === 'green'
+                          ? '#22c55e'
+                          : classificarResultado(e.resultado) === 'red'
+                          ? '#ef4444'
+                          : '#facc15',
+                      fontWeight: 'bold',
+                    }}
+                  >
+                    {e.resultado}
+                  </td>
+                  <td style={td}>{moeda(e.retorno)}</td>
                   <td
                     style={{
                       ...td,
@@ -574,6 +679,7 @@ export default function Home() {
                   >
                     {moeda(e.lucro)}
                   </td>
+                  <td style={td}>{e.obs}</td>
                 </tr>
               ))}
             </tbody>
@@ -618,7 +724,10 @@ function TabelaAnalitica({
               <th style={th}>Entradas</th>
               <th style={th}>Greens</th>
               <th style={th}>Reds</th>
+              <th style={th}>Cashouts</th>
+              <th style={th}>Voids</th>
               <th style={th}>Stake</th>
+              <th style={th}>Retorno</th>
               <th style={th}>Lucro</th>
               <th style={th}>ROI</th>
               <th style={th}>Taxa Green</th>
@@ -632,7 +741,10 @@ function TabelaAnalitica({
                 <td style={td}>{item.entradas}</td>
                 <td style={td}>{item.greens}</td>
                 <td style={td}>{item.reds}</td>
+                <td style={td}>{item.cashouts}</td>
+                <td style={td}>{item.voids}</td>
                 <td style={td}>{moeda(item.stake)}</td>
+                <td style={td}>{moeda(item.retorno)}</td>
                 <td
                   style={{
                     ...td,
@@ -723,9 +835,11 @@ const th = {
   background: '#374151',
   padding: 14,
   textAlign: 'left' as const,
+  whiteSpace: 'nowrap' as const,
 };
 
 const td = {
   padding: 14,
   borderBottom: '1px solid #374151',
+  whiteSpace: 'nowrap' as const,
 };
